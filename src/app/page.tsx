@@ -10,6 +10,24 @@ import QueuePanel from "@/components/QueuePanel";
 
 function ConnectCard() {
   const { spotifyReady } = usePlayer();
+  const [connecting, setConnecting] = useState(false);
+
+  const connect = useCallback(async () => {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      // Fetch first so the browser reliably stores the sp_oauth_state cookie on
+      // this host, THEN navigate. Relying on Set-Cookie surviving a top-level
+      // 307 redirect is flaky in some browsers and causes state mismatch.
+      const res = await fetch("/api/auth/spotify/login", { method: "GET" });
+      const spotifyUrl = res.headers.get("location") ?? res.url;
+      window.location.href = spotifyUrl;
+    } catch {
+      setConnecting(false);
+      window.location.href = "/api/auth/spotify/login";
+    }
+  }, [connecting]);
+
   return (
     <div className="mb-6 rounded-xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-neutral-900 p-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -23,12 +41,14 @@ function ConnectCard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href="/api/auth/spotify/login"
-            className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+          <button
+            type="button"
+            onClick={connect}
+            disabled={connecting}
+            className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-60"
           >
-            Connect Spotify
-          </a>
+            {connecting ? "Connecting…" : "Connect Spotify"}
+          </button>
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               spotifyReady
