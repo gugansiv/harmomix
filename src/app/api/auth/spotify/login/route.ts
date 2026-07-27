@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { spotifyAuthUrl } from "@/lib/spotify";
+import { spotifyAuthUrl, redirectUriFrom } from "@/lib/spotify";
 
-export async function GET() {
+export async function GET(req: Request) {
   const state = crypto.randomUUID();
-  const res = NextResponse.redirect(spotifyAuthUrl(state));
+  const redirectUri = redirectUriFrom(req);
+  const res = NextResponse.redirect(spotifyAuthUrl(state, redirectUri));
   res.cookies.set("sp_oauth_state", state, {
     httpOnly: true,
     sameSite: "lax",

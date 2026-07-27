@@ -19,11 +19,36 @@ const SCOPES = [
   "user-read-currently-playing",
 ].join(" ");
 
-export function spotifyAuthUrl(state: string): string {
+export function spotifyCallbackPath(): string {
+  return "/api/auth/spotify/callback";
+}
+
+/** Build the exact redirect URI from the incoming request host.
+ * Deriving it from the live request guarantees the authorize-step and
+ * token-exchange-step URIs match the registered one (avoids Spotify's
+ * `state_mismatch` redirect_uri error). Falls back to NEXT_PUBLIC_APP_URL. */
+export function redirectUriFrom(req: Request): string {
+  try {
+    const origin = new URL(req.url).origin;
+    if (origin && origin !== "null") return origin + spotifyCallbackPath();
+  } catch {}
+  return `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}${spotifyCallbackPath()}`;
+}
+
+/** Where to send the user after OAuth completes (the app root). */
+export function appBaseUrl(req: Request): string {
+  try {
+    const origin = new URL(req.url).origin;
+    if (origin && origin !== "null") return origin;
+  } catch {}
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+}
+
+export function spotifyAuthUrl(state: string, redirectUri: string): string {
   const params = new URLSearchParams({
     client_id: process.env.SPOTIFY_CLIENT_ID!,
     response_type: "code",
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/spotify/callback`,
+    redirect_uri: redirectUri,
     scope: SCOPES,
     state,
     show_dialog: "true",
@@ -31,7 +56,10 @@ export function spotifyAuthUrl(state: string): string {
   return `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
-export async function spotifyTokenExchange(code: string): Promise<SpotifyTokenData | null> {
+export async function spotifyTokenExchange(
+  code: string,
+  redirectUri: string,
+): Promise<SpotifyTokenData | null> {
   const basic = Buffer.from(
     `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
   ).toString("base64");
@@ -44,7 +72,7 @@ export async function spotifyTokenExchange(code: string): Promise<SpotifyTokenDa
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/spotify/callback`,
+      redirect_uri: redirectUri,
     }),
   });
   if (!res.ok) return null;
