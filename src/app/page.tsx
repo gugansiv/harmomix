@@ -1,65 +1,202 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PlayerProvider, usePlayer } from "@/lib/player-context";
+import type { UnifiedTrack, SourceFilter } from "@/lib/types";
+import SearchBar from "@/components/SearchBar";
+import TrackList from "@/components/TrackList";
+import PlayerBar from "@/components/PlayerBar";
+import QueuePanel from "@/components/QueuePanel";
+
+function ConnectCard() {
+  const { spotifyReady } = usePlayer();
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="mb-6 rounded-xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-neutral-900 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-neutral-100">
+            Connect your services
+          </h2>
+          <p className="mt-1 text-sm text-neutral-400">
+            Spotify Web Playback needs a connected account (Premium). YouTube
+            works out of the box once the API key is set.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+        <div className="flex items-center gap-3">
           <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/api/auth/spotify/login"
+            className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+            Connect Spotify
           </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              spotifyReady
+                ? "bg-emerald-500/15 text-emerald-400"
+                : "bg-white/5 text-neutral-500"
+            }`}
           >
-            Documentation
-          </a>
+            {spotifyReady ? "Spotify ready" : "Spotify not connected"}
+          </span>
         </div>
-      </main>
+      </div>
     </div>
+  );
+}
+
+function App() {
+  const player = usePlayer();
+  const [query, setQuery] = useState("");
+  const [committed, setCommitted] = useState("");
+  const [filter, setFilter] = useState<SourceFilter>("all");
+  const [loading, setLoading] = useState(false);
+  const [spotifyTracks, setSpotifyTracks] = useState<UnifiedTrack[]>([]);
+  const [youtubeTracks, setYoutubeTracks] = useState<UnifiedTrack[]>([]);
+  const [note, setNote] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err) {
+      const map: Record<string, string> = {
+        spotify_state:
+          "Spotify state mismatch. This usually means the host you're browsing (e.g. the 192.168.x.x network URL) differs from the Redirect URI registered in Spotify. Browse http://localhost:3000 and retry.",
+        spotify_token: "Spotify token exchange failed — check your client secret.",
+        spotify_denied: "Spotify authorization was denied.",
+      };
+      if (map[err]) return map[err];
+      if (err.startsWith("spotify_"))
+        return `Spotify error: ${err.replace("spotify_", "")}`;
+      return "Spotify connection failed. Please try again.";
+    }
+    if (params.get("spotify") === "connected") return "Spotify connected ✔";
+    return null;
+  });
+
+  // clear the OAuth result from the URL so a refresh doesn't re-trigger the banner
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
+
+  const runSearch = useCallback(async (q: string) => {
+    if (!q.trim()) return;
+    setCommitted(q);
+    setLoading(true);
+    setNote(null);
+    setSpotifyTracks([]);
+    setYoutubeTracks([]);
+
+    const doSpotify = filter === "all" || filter === "spotify";
+    const doYouTube = filter === "all" || filter === "youtube";
+
+    const out = await Promise.allSettled([
+      doSpotify
+        ? fetch(`/api/search/spotify?q=${encodeURIComponent(q)}&limit=20`).then((r) =>
+            r.json(),
+          )
+        : Promise.resolve({ tracks: [] }),
+      doYouTube
+        ? fetch(`/api/search/youtube?q=${encodeURIComponent(q)}&limit=20`).then((r) =>
+            r.json(),
+          )
+        : Promise.resolve({ tracks: [] }),
+    ]);
+
+    const s = out[0].status === "fulfilled" ? out[0].value : { tracks: [] };
+    const y = out[1].status === "fulfilled" ? out[1].value : { tracks: [] };
+
+    setSpotifyTracks(s.tracks ?? []);
+    setYoutubeTracks(y.tracks ?? []);
+
+    const messages: string[] = [];
+    if (doSpotify && s.error === "not_authenticated")
+      messages.push("Connect Spotify to search there.");
+    if (doYouTube && y.error === "youtube_key_missing")
+      messages.push("YouTube API key not configured.");
+    setNote(messages.length ? messages.join(" ") : null);
+    setLoading(false);
+  }, [filter]);
+
+  const allTracks = useMemo(
+    () => [...spotifyTracks, ...youtubeTracks],
+    [spotifyTracks, youtubeTracks],
+  );
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <header className="mx-auto w-full max-w-6xl px-4 pt-6">
+        <div className="mb-4 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-black font-black">
+            H
+          </div>
+          <h1 className="text-lg font-bold tracking-tight text-neutral-100">
+            Harmonix
+          </h1>
+        </div>
+        <ConnectCard />
+        {note && (
+          <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            {note}
+          </div>
+        )}
+        <SearchBar
+          query={query}
+          onQueryChange={(q) => {
+            setQuery(q);
+            runSearch(q);
+          }}
+          filter={filter}
+          onFilterChange={setFilter}
+          loading={loading}
+        />
+      </header>
+
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-0 px-4 pb-28 pt-4">
+        <main className="min-w-0 flex-1">
+          {committed === "" ? (
+            <div className="mt-16 text-center text-neutral-500">
+              <p className="text-2xl">🎧</p>
+              <p className="mt-2">Search to mix Spotify &amp; YouTube tracks.</p>
+            </div>
+          ) : (
+            <>
+              {filter !== "youtube" && (
+                <TrackList
+                  title="Spotify"
+                  tracks={spotifyTracks}
+                  onPlay={(t) => player.playTrack(t)}
+                  onAdd={(t) => player.addToQueue(t)}
+                />
+              )}
+              {filter !== "spotify" && (
+                <TrackList
+                  title="YouTube"
+                  tracks={youtubeTracks}
+                  onPlay={(t) => player.playTrack(t)}
+                  onAdd={(t) => player.addToQueue(t)}
+                />
+              )}
+              {!loading && allTracks.length === 0 && (
+                <div className="mt-10 text-center text-sm text-neutral-500">
+                  No results for “{committed}”.
+                </div>
+              )}
+            </>
+          )}
+        </main>
+        <QueuePanel />
+      </div>
+
+      <PlayerBar />
+    </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <PlayerProvider>
+      <App />
+    </PlayerProvider>
   );
 }
