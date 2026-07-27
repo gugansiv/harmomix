@@ -119,6 +119,40 @@ export async function spotifyTokenExchange(
   return (await res.json()) as SpotifyTokenData;
 }
 
+let cachedClientToken: string | null = null;
+let clientTokenExpiresAt = 0;
+
+export async function getClientCredentialsToken(): Promise<string | null> {
+  if (cachedClientToken && clientTokenExpiresAt > Date.now() + 60_000) {
+    return cachedClientToken;
+  }
+  if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+    return null;
+  }
+  try {
+    const basic = Buffer.from(
+      `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
+    ).toString("base64");
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cachedClientToken = data.access_token;
+    clientTokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
+    return cachedClientToken;
+  } catch {
+    return null;
+  }
+}
+
 export async function refreshAccessToken(refreshToken: string): Promise<SpotifyTokenData | null> {
   const basic = Buffer.from(
     `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,

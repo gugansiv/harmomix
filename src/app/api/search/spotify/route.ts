@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getValidAccessToken, toUnifiedSpotify } from "@/lib/spotify";
+import { getValidAccessToken, getClientCredentialsToken, toUnifiedSpotify } from "@/lib/spotify";
 import type { UnifiedTrack } from "@/lib/types";
 
 export async function GET(req: Request) {
@@ -9,7 +9,11 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ tracks: [] });
 
-  const token = await getValidAccessToken();
+  let token = await getValidAccessToken();
+  if (!token) {
+    token = await getClientCredentialsToken();
+  }
+
   if (!token) {
     return NextResponse.json({ tracks: [], error: "not_authenticated" }, { status: 401 });
   }
