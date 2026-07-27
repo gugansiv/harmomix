@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Harmonix</title>
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:#121212;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;box-sizing:border-box}
+    .logo{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#10b981,#059669);
+      display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:16px}
+    h1{font-size:18px;font-weight:600;margin:0 0 6px}
+    p{color:#b3b3b3;font-size:14px;margin:0}
+  </style>
+</head>
+<body>
+  <div class="logo">♪</div>
+  <h1>Harmonix</h1>
+  <p id="msg">Returning to the app…</p>
+
+  <script>
+    // Spotify redirects here as:  /ios-callback.html?code=...&state=...  (or ?error=...)
+    // We simply forward the entire query string to the app's registered URL scheme
+    // (harmonix://callback), which iOS routes back into the Harmonix app.
+    (function () {
+      var q = location.search; // includes leading "?"
+      if (!q || q.length < 2) {
+        document.getElementById('msg').textContent = 'No login data received.';
+        return;
+      }
+      // Use a tiny timeout so the user sees the "Returning…" state before the app opens.
+      setTimeout(function () {
+        window.location.href = 'harmonix://callback' + q;
+      }, 400);
+    })();
+  </script>
+</body>
+</html>
