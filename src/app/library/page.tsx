@@ -6,9 +6,10 @@ import AppShell from "@/components/AppShell";
 import { usePlaylists } from "@/lib/playlists";
 
 function LibraryPage() {
-  const { playlists, createPlaylist, exportAll, importAll } = usePlaylists();
+  const { playlists, createPlaylist, exportAll, importAll, syncNow } = usePlaylists();
   const [name, setName] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -28,11 +29,29 @@ function LibraryPage() {
     e.target.value = "";
   };
 
+  const handleSync = async () => {
+    setSyncStatus("Syncing…");
+    const r = await syncNow();
+    if (!r.ok) {
+      setSyncStatus(`Sync failed: ${r.error ?? "unknown"}`);
+    } else if (r.mode === "redis") {
+      setSyncStatus("Synced ✓ (durable · Upstash Redis)");
+    } else {
+      setSyncStatus("Saved locally ✓ (link Upstash Redis for cross-device durability)");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Your Library</h1>
         <div className="flex gap-2">
+          <button
+            onClick={handleSync}
+            className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-hover"
+          >
+            Sync
+          </button>
           <button
             onClick={() => fileRef.current?.click()}
             className="rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-hover"
@@ -58,6 +77,12 @@ function LibraryPage() {
       {importError && (
         <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {importError}
+        </p>
+      )}
+
+      {syncStatus && (
+        <p className="rounded-lg border border-accent/20 bg-accent/10 px-4 py-2 text-sm text-accent">
+          {syncStatus}
         </p>
       )}
 

@@ -22,6 +22,7 @@ export function getDeviceId(): string {
 export interface SyncPushResult {
   ok: boolean;
   updatedAt: number;
+  mode?: string;
   error?: string;
 }
 

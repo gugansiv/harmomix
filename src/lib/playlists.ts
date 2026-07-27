@@ -70,7 +70,7 @@ export function usePlaylists(): {
   getPlaylist: (id: string) => Playlist | undefined;
   exportAll: () => void;
   importAll: (json: string) => { ok: boolean; error?: string };
-  syncNow: () => Promise<void>;
+  syncNow: () => Promise<{ ok: boolean; mode?: string; error?: string }>;
 } {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
@@ -206,14 +206,14 @@ export function usePlaylists(): {
     [persist],
   );
 
-  const syncNow = useCallback(async () => {
+  const syncNow = useCallback(async (): Promise<{ ok: boolean; mode?: string; error?: string }> => {
     const snap: SyncSnapshot = {
       playlists: read<Playlist>(PLAYLISTS_KEY),
       liked: read<UnifiedTrack>(LIKED_KEY),
       recent: read<UnifiedTrack>(RECENT_KEY),
       updatedAt: Date.now(),
     };
-    await pushSync(snap);
+    const putRes = await pushSync(snap); // { ok, mode }
     const r = await pullSync();
     if (r.ok && r.payload) {
       const snap2 = r.payload as SyncSnapshot;
@@ -223,6 +223,7 @@ export function usePlaylists(): {
         setPlaylists(merged);
       }
     }
+    return { ok: putRes.ok, mode: putRes.mode, error: putRes.error };
   }, []);
 
   return {
