@@ -3,34 +3,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlayerProvider, usePlayer } from "@/lib/player-context";
 import type { UnifiedTrack, SourceFilter } from "@/lib/types";
-import Sidebar from "@/components/Sidebar";
-import Header from "@/components/Header";
-import TrackList from "@/components/TrackList";
-import PlayerBar from "@/components/PlayerBar";
+import TrackRow from "@/components/TrackRow";
 import QueuePanel from "@/components/QueuePanel";
+import AppShell from "@/components/AppShell";
+import { useLiked } from "@/lib/playlists";
 
-function AppContent() {
+function HomeContent() {
   const player = usePlayer();
+  const { isLiked, toggleLike } = useLiked();
   const [query, setQuery] = useState("");
   const [committed, setCommitted] = useState("");
   const [filter, setFilter] = useState<SourceFilter>("all");
   const [loading, setLoading] = useState(false);
-  const [showQueue, setShowQueue] = useState(false);
-  const [spotifyTracks, setSpotifyTracks] = useState<UnifiedTrack[]>([]);
-  const [youtubeTracks, setYoutubeTracks] = useState<UnifiedTrack[]>([]);
-
+  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
   const [note, setNote] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
     if (err) {
       const map: Record<string, string> = {
-        spotify_missing_client_id:
-          "Spotify Client ID is not configured. Please set SPOTIFY_CLIENT_ID in your Vercel Environment Variables.",
         spotify_state:
-          "Spotify state mismatch. Browse via your main app domain (https://harmonix.vercel.app) and retry.",
-        spotify_token:
-          "Spotify token exchange failed — check your SPOTIFY_CLIENT_SECRET in Vercel.",
+          "Spotify state mismatch. This usually means the host you're browsing (e.g. the 192.168.x.x network URL) differs from the Redirect URI registered in Spotify. Browse http://localhost:3000 and retry.",
+        spotify_token: "Spotify token exchange failed — check your client secret.",
         spotify_denied: "Spotify authorization was denied.",
       };
       if (map[err]) return map[err];
@@ -42,229 +36,157 @@ function AppContent() {
     return null;
   });
 
-  const connectSpotify = useCallback(() => {
-    window.location.href = "/api/auth/spotify/login";
-  }, []);
-
-  // Clear OAuth URL query param on mount
+  // clear the OAuth result from the URL so a refresh doesn't re-trigger the banner
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.search) {
       window.history.replaceState({}, "", "/");
     }
   }, []);
 
-  const runSearch = useCallback(
-    async (q: string) => {
-      if (!q.trim()) {
-        setCommitted("");
-        setSpotifyTracks([]);
-        setYoutubeTracks([]);
-        return;
+  const runSearch = useCallback(async (q: string) => {
+    if (!q.trim()) return;
+    setCommitted(q);
+    setLoading(true);
+    setNote(null);
+    setTracks([]);
+
+    try {
+      const res = await fetch(`/api/search/unified?q=${encodeURIComponent(q)}&limit=30`);
+      const data = await res.json();
+      const results: UnifiedTrack[] = data.tracks ?? [];
+
+      setTracks(results);
+
+      const s = results.filter((t) => t.source === "spotify");
+      const y = results.filter((t) => t.source === "youtube");
+
+      if (s.length === 0 && y.length === 0) {
+        setNote("No results.");
+      } else if (s.length === 0 && filter !== "youtube") {
+        setNote("YouTube results only — connect Spotify to search there too.");
+      } else if (y.length === 0 && filter !== "spotify") {
+        setNote("Spotify results only — YouTube API key not configured.");
       }
-      setCommitted(q);
-      setLoading(true);
-      setNote(null);
+    } catch (e) {
+      console.error("[unified search]", e);
+      setNote("Search failed. Please try again.");
+    }
 
-      const doSpotify = filter === "all" || filter === "spotify";
-      const doYouTube = filter === "all" || filter === "youtube";
+    setLoading(false);
+  }, [filter]);
 
-      const out = await Promise.allSettled([
-        doSpotify
-          ? fetch(`/api/search/spotify?q=${encodeURIComponent(q)}&limit=20`).then((r) =>
-              r.json(),
-            )
-          : Promise.resolve({ tracks: [] }),
-        doYouTube
-          ? fetch(`/api/search/youtube?q=${encodeURIComponent(q)}&limit=20`).then((r) =>
-              r.json(),
-            )
-          : Promise.resolve({ tracks: [] }),
-      ]);
-
-      const s = out[0].status === "fulfilled" ? out[0].value : { tracks: [] };
-      const y = out[1].status === "fulfilled" ? out[1].value : { tracks: [] };
-
-      setSpotifyTracks(s.tracks ?? []);
-      setYoutubeTracks(y.tracks ?? []);
-
-      const messages: string[] = [];
-      if (doSpotify && s.error === "not_authenticated")
-        messages.push("Connect Spotify to search Spotify tracks.");
-      if (doYouTube && y.error === "youtube_key_missing")
-        messages.push("YouTube API key not configured.");
-      setNote(messages.length ? messages.join(" ") : null);
-      setLoading(false);
-    },
-    [filter],
-  );
-
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (query.trim()) {
-        runSearch(query);
-      }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [query, runSearch]);
-
-  const allTracks = useMemo(
-    () => [...spotifyTracks, ...youtubeTracks],
-    [spotifyTracks, youtubeTracks],
-  );
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 18) return "Good afternoon";
-    return "Good evening";
-  };
+  const filteredTracks = useMemo(() => {
+    if (filter === "all") return tracks;
+    return tracks.filter((t) => t.source === filter);
+  }, [tracks, filter]);
 
   return (
-    <div className="flex h-screen w-screen bg-black overflow-hidden select-none">
-      {/* Spotify Signature Sidebar */}
-      <Sidebar
-        filter={filter}
-        onFilterChange={setFilter}
-        onConnectSpotify={connectSpotify}
-      />
-
-      {/* Main Content Area */}
-      <div className="flex flex-1 flex-col my-2 mr-2 overflow-hidden rounded-xl bg-[#121212] border border-white/5 relative">
-        <Header
-          query={query}
-          onQueryChange={setQuery}
-          filter={filter}
-          onFilterChange={setFilter}
-          loading={loading}
-          onConnectSpotify={connectSpotify}
-        />
-
-        <div className="flex flex-1 overflow-hidden relative">
-          {/* Scrollable Center Body */}
-          <main className="flex-1 overflow-y-auto px-6 py-4 pb-32">
-            {note && (
-              <div className="mb-4 flex items-center justify-between rounded-lg border border-[#1ed760]/30 bg-[#1ed760]/10 px-4 py-2.5 text-xs font-semibold text-[#1ed760]">
-                <span>{note}</span>
-                <button
-                  onClick={() => setNote(null)}
-                  className="text-neutral-400 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
+    <div className="flex flex-col h-full">
+      {/* Header with search */}
+      <header className="sticky top-0 z-20 bg-black/80 backdrop-blur-xl border-b border-border px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="relative max-w-2xl mx-auto">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-subtext" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                runSearch(e.target.value);
+              }}
+              placeholder="Search songs, artists, videos…"
+              className="w-full pl-12 pr-4 py-3 rounded-full bg-hover text-foreground text-sm placeholder:text-subtext outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+            />
+            {loading && (
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent" />
             )}
+          </div>
+        </div>
+      </header>
 
-            {committed === "" ? (
-              <div className="flex flex-col gap-6">
-                {/* Hero Greeting Section */}
-                <div>
-                  <h1 className="text-3xl font-black tracking-tight text-white mb-4">
-                    {getGreeting()}
-                  </h1>
-
-                  {/* Quick Play Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {[
-                      { title: "Top Hits 2026", sub: "Spotify & YouTube", query: "top hits 2026" },
-                      { title: "Trending India", sub: "YouTube Music", query: "trending india" },
-                      { title: "Chill Lofi Beats", sub: "Atmospheric", query: "lofi beats" },
-                      { title: "Global Pop", sub: "Spotify Chart", query: "pop hits" },
-                      { title: "Anirudh Ravichander", sub: "Composer Focus", query: "anirudh" },
-                      { title: "A.R. Rahman Hits", sub: "Legendary", query: "ar rahman" },
-                    ].map((item, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          setQuery(item.query);
-                          runSearch(item.query);
-                        }}
-                        className="group flex items-center gap-4 rounded-md bg-[#181818] hover:bg-[#282828] cursor-pointer transition overflow-hidden shadow-sm border border-white/5"
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6 pb-[130px]">
+        <div className="max-w-7xl mx-auto">
+          {committed === "" ? (
+            <div className="flex flex-col items-center justify-center min-h-[40vh] text-center">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-accent/20 to-transparent flex items-center justify-center mb-6 animate-pulse">
+                <svg className="w-12 h-12 text-accent/60" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-semibold mb-2">Welcome to Harmonix</h2>
+              <p className="text-subtext max-w-md mx-auto">
+                Search for any song, artist, or album to mix Spotify and YouTube Music results in one unified player.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3 justify-center text-sm text-subtext">
+                <span className="px-3 py-1.5 rounded-full bg-hover">Try "The Weeknd"</span>
+                <span className="px-3 py-1.5 rounded-full bg-hover">Try "Arijit Singh"</span>
+                <span className="px-3 py-1.5 rounded-full bg-hover">Try "Lo-fi beats"</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {note && (
+                <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300 animate-slide-up">
+                  {note}
+                </div>
+              )}
+              {filteredTracks.length === 0 ? (
+                <div className="text-center text-subtext py-12">
+                  <p>No results for “{committed}”.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">
+                      {filteredTracks.length} result{filteredTracks.length !== 1 ? "s" : ""} for “{committed}”
+                    </h2>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setFilter("all")}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition ${filter === "all" ? "bg-accent text-black" : "bg-hover text-subtext hover:text-foreground hover:bg-hover/80"}`}
                       >
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-gradient-to-tr from-[#1ed760] to-[#121212] text-xl font-bold text-black group-hover:scale-105 transition">
-                          🎵
-                        </div>
-                        <div className="min-w-0 flex-1 py-2 pr-2">
-                          <div className="truncate text-sm font-bold text-white">
-                            {item.title}
-                          </div>
-                          <div className="truncate text-xs text-neutral-400">
-                            {item.sub}
-                          </div>
-                        </div>
-                        <button className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1ed760] text-black opacity-0 shadow-lg group-hover:opacity-100 transition hover:scale-105">
-                          ▶
-                        </button>
-                      </div>
+                        All
+                      </button>
+                      <button
+                        onClick={() => setFilter("spotify")}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition ${filter === "spotify" ? "bg-[#1db954]/20 text-[#1db954]" : "bg-hover text-subtext hover:text-foreground hover:bg-hover/80"}`}
+                      >
+                        Spotify
+                      </button>
+                      <button
+                        onClick={() => setFilter("youtube")}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition ${filter === "youtube" ? "bg-red-500/20 text-red-400" : "bg-hover text-subtext hover:text-foreground hover:bg-hover/80"}`}
+                      >
+                        YouTube
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5">
+                    {filteredTracks.map((track, index) => (
+                      <TrackRow
+                        key={track.id}
+                        track={track}
+                        index={index}
+                        onPlay={player.playTrack}
+                        onAdd={player.addToQueue}
+                        onLike={toggleLike}
+                        isLiked={isLiked(track.id)}
+                        isPlaying={player.status !== "idle"}
+                      />
                     ))}
                   </div>
                 </div>
-
-                <div className="mt-6 text-center text-xs text-neutral-500">
-                  Search above to discover & stream tracks across Spotify & YouTube simultaneously.
-                </div>
-              </div>
-            ) : (
-              <>
-                {filter !== "youtube" && (
-                  <TrackList
-                    title="Spotify Tracks"
-                    tracks={spotifyTracks}
-                    onPlay={(t, list) => player.playMany(list, list.indexOf(t))}
-                    onAdd={(t) => player.addToQueue(t)}
-                  />
-                )}
-                {filter !== "spotify" && (
-                  <TrackList
-                    title="YouTube Music"
-                    tracks={youtubeTracks}
-                    onPlay={(t, list) => player.playMany(list, list.indexOf(t))}
-                    onAdd={(t) => player.addToQueue(t)}
-                  />
-                )}
-                {!loading && allTracks.length === 0 && (
-                  <div className="mt-12 flex flex-col items-center justify-center rounded-xl bg-[#181818] p-8 text-center border border-white/5 max-w-md mx-auto">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1ed760]/10 text-[#1ed760] text-xl mb-3">
-                      🎵
-                    </div>
-                    <h3 className="text-base font-bold text-white mb-1">
-                      No Spotify results for “{committed}”
-                    </h3>
-                    <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
-                      Connect your Spotify account to search &amp; play Spotify tracks, or switch to All / YouTube Music for instant playback.
-                    </p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      <button
-                        onClick={connectSpotify}
-                        className="rounded-full bg-[#1ed760] px-5 py-2 text-xs font-bold text-black hover:bg-[#1fdf64] transition"
-                      >
-                        Connect Spotify
-                      </button>
-                      <button
-                        onClick={() => setFilter("all")}
-                        className="rounded-full bg-white/10 px-5 py-2 text-xs font-bold text-white hover:bg-white/20 transition"
-                      >
-                        Switch to All / YouTube Music
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </main>
-
-          {/* Right Queue Drawer */}
-          {showQueue && (
-            <QueuePanel onClose={() => setShowQueue(false)} />
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Spotify Signature Fixed Bottom Player */}
-      <PlayerBar
-        showQueue={showQueue}
-        onToggleQueue={() => setShowQueue(!showQueue)}
-      />
+      <QueuePanel onClose={() => {}} />
     </div>
   );
 }
@@ -272,7 +194,9 @@ function AppContent() {
 export default function Page() {
   return (
     <PlayerProvider>
-      <AppContent />
+      <AppShell>
+        <HomeContent />
+      </AppShell>
     </PlayerProvider>
   );
 }

@@ -1,143 +1,131 @@
 "use client";
 
+import { useState } from "react";
 import { usePlayer } from "@/lib/player-context";
 import { formatDuration } from "@/lib/format";
+import LyricsPanel from "./LyricsPanel";
 
-export default function QueuePanel({
-  onClose,
-}: {
-  onClose?: () => void;
-}) {
-  const { currentTrack, queue, currentIndex, removeFromQueue, clearQueue, playMany } =
-    usePlayer();
+export default function QueuePanel({ onClose }: { onClose: () => void }) {
+  const {
+    queue,
+    currentIndex,
+    removeFromQueue,
+    clearQueue,
+    playMany,
+    currentTrack,
+    positionMs,
+  } = usePlayer();
+  const [tab, setTab] = useState<"queue" | "lyrics">("queue");
+  const [drag, setDrag] = useState<number | null>(null);
+
+  const onDrop = (target: number) => {
+    if (drag === null || drag === target) return;
+    const copy = [...queue];
+    const [moved] = copy.splice(drag, 1);
+    copy.splice(target, 0, moved);
+    // Re-sync current index: keep current track under playback
+    const curId = queue[currentIndex]?.id;
+    const newIdx = copy.findIndex((t) => t.id === curId);
+    playMany(copy, newIdx < 0 ? 0 : newIdx);
+    setDrag(null);
+  };
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col gap-4 rounded-xl bg-[#121212] p-4 text-white select-none border border-white/5 shadow-xl">
-      {/* Panel Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-          <span>Queue</span>
-          <span className="text-xs font-normal text-neutral-400">
-            ({queue.length})
-          </span>
-        </h2>
-        <div className="flex items-center gap-2">
-          {queue.length > 0 && (
+    <aside
+      className="fixed right-0 top-0 z-50 flex h-full w-[400px] max-w-full flex-col border-l border-border bg-sidebar"
+      aria-label="Play queue"
+    >
+      <div className="flex items-center justify-between border-b border-border p-4">
+        <div className="flex gap-1 rounded-full bg-hover p-1">
+          {(["queue", "lyrics"] as const).map((t) => (
             <button
-              onClick={clearQueue}
-              className="text-xs font-semibold text-neutral-400 hover:text-white transition"
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                tab === t ? "bg-accent text-black" : "text-subtext hover:text-foreground"
+              }`}
             >
-              Clear all
+              {t}
             </button>
-          )}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-neutral-400 hover:text-white p-1"
-            >
-              ✕
-            </button>
-          )}
+          ))}
         </div>
+        <button onClick={onClose} className="text-subtext hover:text-foreground" aria-label="Close">
+          ✕
+        </button>
       </div>
 
-      {/* Currently Playing Card */}
-      {currentTrack && (
-        <div className="flex flex-col gap-2 rounded-lg bg-[#181818] p-3 border border-white/5">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#1ed760]">
-            Now Playing
-          </span>
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-[#282828]">
-              {currentTrack.artworkUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={currentTrack.artworkUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-neutral-500">
-                  ♪
+      {tab === "lyrics" ? (
+        currentTrack ? (
+          <LyricsPanel
+            artist={currentTrack.artist}
+            title={currentTrack.title}
+            positionMs={positionMs}
+          />
+        ) : (
+          <p className="p-6 text-sm text-subtext">Play a track to see lyrics.</p>
+        )
+      ) : (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {queue.length === 0 ? (
+            <p className="p-6 text-sm text-subtext">Your queue is empty.</p>
+          ) : (
+            <>
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {queue.map((t, idx) => (
+                  <div
+                    key={`${t.id}-${idx}`}
+                    draggable
+                    onDragStart={() => setDrag(idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onDrop(idx)}
+                    onClick={() => playMany(queue, idx)}
+                    className={`group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors ${
+                      idx === currentIndex ? "bg-hover" : "hover:bg-hover/60"
+                    } ${drag === idx ? "opacity-50" : ""}`}
+                  >
+                    <span className="cursor-grab text-subtext/40 group-hover:text-subtext">⠿</span>
+                    <div className="w-10 flex-shrink-0">
+                      {t.artworkUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded-md object-cover" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-md bg-hover" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
+                      <p className="truncate text-xs text-subtext">{t.artist}</p>
+                    </div>
+                    <span className="text-xs tabular-nums text-subtext">
+                      {formatDuration(t.durationMs)}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFromQueue(idx);
+                      }}
+                      className="opacity-0 group-hover:opacity-100"
+                      aria-label="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {queue.length > 1 && (
+                <div className="border-t border-border p-3 text-center">
+                  <button
+                    onClick={clearQueue}
+                    className="text-xs text-subtext hover:text-foreground"
+                  >
+                    Clear queue
+                  </button>
                 </div>
               )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-bold text-white">
-                {currentTrack.title}
-              </div>
-              <div className="truncate text-[11px] text-neutral-400">
-                {currentTrack.artist}
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
-
-      {/* Next Up Queue List */}
-      <div className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1">
-        <span className="text-xs font-bold text-neutral-400 px-1 py-1">
-          Next Up
-        </span>
-        {queue.length === 0 ? (
-          <div className="mt-8 text-center text-xs text-neutral-500">
-            Queue is empty. Add songs from search.
-          </div>
-        ) : (
-          queue.map((t, i) => {
-            const isCur = i === currentIndex;
-            return (
-              <div
-                key={`${t.id}-${i}`}
-                onClick={() => playMany(queue, i)}
-                className={`group flex items-center gap-2 rounded-md p-2 cursor-pointer transition ${
-                  isCur ? "bg-[#282828]" : "hover:bg-[#1a1a1a]"
-                }`}
-              >
-                <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-[#242424]">
-                  {t.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={t.artworkUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
-                      ♪
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`truncate text-xs font-semibold ${
-                      isCur ? "text-[#1ed760]" : "text-white"
-                    }`}
-                  >
-                    {t.title}
-                  </div>
-                  <div className="truncate text-[11px] text-neutral-400">
-                    {t.artist}
-                  </div>
-                </div>
-                <span className="text-[10px] font-mono text-neutral-500">
-                  {formatDuration(t.durationMs)}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeFromQueue(i);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-white transition"
-                  title="Remove from queue"
-                >
-                  ✕
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
     </aside>
   );
 }

@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import type { UnifiedTrack } from "./types";
+import { pushRecent } from "./playlists";
 
 // ---- Minimal typings for the third-party SDKs (no official TS types ship) ----
 interface SpotifyPlayerState {
@@ -16,7 +17,6 @@ interface SpotifyPlayerState {
   duration?: number;
   paused?: boolean;
   track_window?: { current_track?: { uri?: string } };
-  device_id?: string;
 }
 interface SpotifyPlayerInstance {
   connect: () => Promise<boolean>;
@@ -24,7 +24,8 @@ interface SpotifyPlayerInstance {
   resume: () => Promise<void>;
   play: (opts: { uris: string[]; position?: number }) => Promise<void>;
   seek: (ms: number) => Promise<void>;
-  on: (event: string, cb: (data?: any) => void) => void;
+  setVolume: (volume: number) => Promise<void>;
+  on: (event: string, cb: (state?: SpotifyPlayerState) => void) => void;
 }
 interface SpotifyPlayerConstructor {
   new (opts: {
@@ -38,6 +39,7 @@ interface YTPlayerInstance {
   playVideo: () => void;
   pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  setVolume: (volume: number) => void;
   getCurrentTime: () => number;
   getDuration: () => number;
   getPlayerState: () => number;
@@ -98,6 +100,10 @@ interface PlayerState {
   seek: (ms: number) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
+  volume: number;
+  muted: boolean;
+  setVolume: (v: number) => void;
+  toggleMute: () => void;
 }
 
 const Ctx = createContext<PlayerState | null>(null);
@@ -111,21 +117,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [durationMs, setDurationMs] = useState(0);
   const [spotifyReady, setSpotifyReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [volume, setVolumeState] = useState(0.8);
+  const [muted, setMuted] = useState(false);
 
   const spotifyRef = useRef<SpotifyPlayerInstance | null>(null);
-  const deviceIdRef = useRef<string | null>(null);
   const ytRef = useRef<YTPlayerInstance | null>(null);
   const ytDivRef = useRef<HTMLDivElement | null>(null);
   const queueRef = useRef<UnifiedTrack[]>([]);
   const indexRef = useRef(-1);
   const trackRef = useRef<UnifiedTrack | null>(null);
+  const volumeRef = useRef(0.8);
+  const lastVolumeRef = useRef(0.8);
 
   // keep refs in sync for use inside async SDK callbacks / intervals
   useEffect(() => {
     queueRef.current = queue;
     indexRef.current = currentIndex;
     trackRef.current = currentTrack;
-  }, [queue, currentIndex, currentTrack]);
+    volumeRef.current = volume;
+  }, [queue, currentIndex, currentTrack, volume]);
 
   const pauseSpotify = useCallback(() => {
     spotifyRef.current?.pause().catch(() => {});
@@ -152,42 +162,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setPositionMs(0);
       setDurationMs(track.durationMs ?? 0);
       setError(null);
+      pushRecent(track);
 
       if (track.source === "spotify") {
         pauseOther("spotify");
-        if (!spotifyRef.current || !deviceIdRef.current) {
-          setError("Spotify player not ready — ensure Spotify Premium account is logged in.");
+        if (!spotifyRef.current) {
+          setError("Spotify player not ready.");
           setStatus("idle");
           return;
         }
         try {
-          const res = await fetch("/api/auth/spotify/token");
-          if (!res.ok) throw new Error("No token");
-          const { access_token } = await res.json();
-
-          const playRes = await fetch(
-            `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`,
-            {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${access_token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ uris: [track.spotifyUri ?? ""] }),
-            },
-          );
-
-          if (playRes.status === 403) {
-            setError("Spotify Premium is required for Web Playback.");
-            setStatus("idle");
-          } else if (!playRes.ok && playRes.status !== 204) {
-            setError(`Spotify play error (${playRes.status}).`);
-            setStatus("idle");
-          } else {
-            setStatus("playing");
-          }
+          await spotifyRef.current.play({ uris: [track.spotifyUri ?? ""] });
+          setStatus("playing");
         } catch {
-          setError("Failed to play on Spotify.");
+          setError("Failed to play on Spotify (Premium required).");
           setStatus("idle");
         }
       } else if (track.source === "youtube") {
@@ -328,6 +316,42 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setDurationMs(0);
   }, [pauseSpotify, pauseYouTube]);
 
+  // ---- volume / mute (applies to both Spotify + YouTube SDKs) ----
+  const applyVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    try {
+      spotifyRef.current?.setVolume?.(clamped);
+    } catch {}
+    try {
+      ytRef.current?.setVolume?.(clamped * 100);
+    } catch {}
+  }, []);
+
+  const setVolume = useCallback(
+    (v: number) => {
+      const clamped = Math.max(0, Math.min(1, v));
+      setVolumeState(clamped);
+      setMuted(clamped === 0);
+      if (clamped > 0) lastVolumeRef.current = clamped;
+      applyVolume(clamped);
+    },
+    [applyVolume],
+  );
+
+  const toggleMute = useCallback(() => {
+    setMuted((m) => {
+      const nextMuted = !m;
+      if (nextMuted) {
+        applyVolume(0);
+      } else {
+        const restore = lastVolumeRef.current || 0.8;
+        setVolumeState(restore);
+        applyVolume(restore);
+      }
+      return nextMuted;
+    });
+  }, [applyVolume]);
+
   // ---- initialise the two SDK players ----
   const initSpotify = useCallback(() => {
     if (!window.Spotify) return;
@@ -338,22 +362,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           fetch("/api/auth/spotify/token")
             .then((r) => (r.ok ? r.json() : Promise.reject()))
             .then((d: { access_token: string }) => cb(d.access_token))
-            .catch(() => {});
+            .catch(() => setError("Spotify token unavailable — reconnect."));
         },
-        volume: 0.8,
+        volume: volumeRef.current,
       });
-      player.on("ready", (data?: { device_id?: string }) => {
-        if (data?.device_id) deviceIdRef.current = data.device_id;
+      player.on("ready", () => {
         setSpotifyReady(true);
-        setError(null);
+        try { player.setVolume(volumeRef.current); } catch {}
       });
       player.on("not_ready", () => setSpotifyReady(false));
-      player.on("initialization_error", () => {});
-      player.on("authentication_error", () => {
-        setSpotifyReady(false);
-      });
+      player.on("initialization_error", () => setError("Spotify init error"));
+      player.on("authentication_error", () =>
+        setError("Spotify auth error — please reconnect."),
+      );
       player.on("account_error", () =>
-        setError("Spotify Premium is required for Web Audio Playback."),
+        setError("Spotify Premium required for Web Playback."),
       );
       player.on("player_state_changed", (st?: SpotifyPlayerState) => {
         if (!st) return;
@@ -369,9 +392,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const initYouTube = useCallback(() => {
-    if (!window.YT || !window.YT.Player || !ytDivRef.current) return;
+    if (!window.YT || !window.YT.Player) return;
     const YT = window.YT;
-    ytRef.current = new YT.Player(ytDivRef.current, {
+    // The YT IFrame API REPLACES the element we pass with an <iframe>.
+    // If that element is React-managed, React later throws
+    // "removeChild ... not a child of this node". So we create a detached
+    // container that React never reconciles and append it to <body>.
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.width = "0";
+    container.style.height = "0";
+    container.style.overflow = "hidden";
+    document.body.appendChild(container);
+    ytDivRef.current = container;
+    ytRef.current = new YT.Player(container, {
       height: "0",
       width: "0",
       playerVars: {
@@ -467,14 +501,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seek,
     removeFromQueue,
     clearQueue,
+    volume,
+    muted,
+    setVolume,
+    toggleMute,
   };
 
   return (
     <Ctx.Provider value={value}>
-      <div
-        ref={ytDivRef}
-        style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
-      />
       {children}
     </Ctx.Provider>
   );
