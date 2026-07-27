@@ -23,11 +23,13 @@ export function spotifyCallbackPath(): string {
   return "/api/auth/spotify/callback";
 }
 
-/** Build the exact redirect URI from the incoming request host.
- * Deriving it from the live request guarantees the authorize-step and
- * token-exchange-step URIs match the registered one (avoids Spotify's
- * `state_mismatch` redirect_uri error). Falls back to NEXT_PUBLIC_APP_URL. */
+/** Build the exact redirect URI.
+ * Prefer an explicit SPOTIFY_REDIRECT_URI (authoritative — set it to exactly
+ * what's registered in the Spotify dashboard). Fall back to the live request
+ * host so localhost works with zero config. */
 export function redirectUriFrom(req: Request): string {
+  const configured = process.env.SPOTIFY_REDIRECT_URI?.trim();
+  if (configured) return configured;
   try {
     const origin = new URL(req.url).origin;
     if (origin && origin !== "null") return origin + spotifyCallbackPath();
