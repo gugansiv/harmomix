@@ -223,8 +223,30 @@ function AppContent() {
                   />
                 )}
                 {!loading && allTracks.length === 0 && (
-                  <div className="mt-16 text-center text-sm text-neutral-400">
-                    No tracks found for “{committed}”. Try searching for an artist or song name.
+                  <div className="mt-12 flex flex-col items-center justify-center rounded-xl bg-[#181818] p-8 text-center border border-white/5 max-w-md mx-auto">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1ed760]/10 text-[#1ed760] text-xl mb-3">
+                      🎵
+                    </div>
+                    <h3 className="text-base font-bold text-white mb-1">
+                      No Spotify results for “{committed}”
+                    </h3>
+                    <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
+                      Connect your Spotify account to search &amp; play Spotify tracks, or switch to All / YouTube Music for instant playback.
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <button
+                        onClick={connectSpotify}
+                        className="rounded-full bg-[#1ed760] px-5 py-2 text-xs font-bold text-black hover:bg-[#1fdf64] transition"
+                      >
+                        Connect Spotify
+                      </button>
+                      <button
+                        onClick={() => setFilter("all")}
+                        className="rounded-full bg-white/10 px-5 py-2 text-xs font-bold text-white hover:bg-white/20 transition"
+                      >
+                        Switch to All / YouTube Music
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
