@@ -5,7 +5,7 @@ import type { SourceFilter } from "@/lib/types";
 const FILTERS: { id: SourceFilter; label: string; icon: string }[] = [
   { id: "all", label: "All", icon: "🎵" },
   { id: "spotify", label: "Spotify", icon: "🟢" },
-  { id: "youtube", label: "YouTube", icon: "🔴" },
+  { id: "youtube", label: "YouTube Music", icon: "🔴" },
 ];
 
 export default function SearchBar({

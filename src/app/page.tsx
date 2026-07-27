@@ -216,7 +216,7 @@ function AppContent() {
                 )}
                 {filter !== "spotify" && (
                   <TrackList
-                    title="YouTube Tracks & Videos"
+                    title="YouTube Music"
                     tracks={youtubeTracks}
                     onPlay={(t, list) => player.playMany(list, list.indexOf(t))}
                     onAdd={(t) => player.addToQueue(t)}

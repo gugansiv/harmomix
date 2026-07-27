@@ -159,7 +159,7 @@ export default function PlayerBar({
                 : "bg-red-500/10 text-red-500 border border-red-500/20"
             }`}
           >
-            {currentTrack.source === "spotify" ? "Spotify" : "YouTube"}
+            {currentTrack.source === "spotify" ? "Spotify" : "YouTube Music"}
           </span>
 
           {/* Queue toggle button */}

@@ -70,7 +70,7 @@ export default function Sidebar({
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/20 text-red-500 font-bold text-xs">
               Y
             </span>
-            YouTube Videos
+            YouTube Music
           </button>
         </nav>
       </div>

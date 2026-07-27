@@ -14,11 +14,12 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ tracks: [] });
 
-  // Step 1: search for videos
+  // Step 1: search specifically for YouTube Music tracks (videoCategoryId=10)
   const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
   searchUrl.searchParams.set("part", "snippet");
   searchUrl.searchParams.set("q", q);
   searchUrl.searchParams.set("type", "video");
+  searchUrl.searchParams.set("videoCategoryId", "10");
   searchUrl.searchParams.set("videoEmbeddable", "true");
   searchUrl.searchParams.set("maxResults", String(limit));
   searchUrl.searchParams.set("key", key);
