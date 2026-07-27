@@ -12,20 +12,10 @@ function ConnectCard() {
   const { spotifyReady } = usePlayer();
   const [connecting, setConnecting] = useState(false);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(() => {
     if (connecting) return;
     setConnecting(true);
-    try {
-      // Fetch first so the browser reliably stores the sp_oauth_state cookie on
-      // this host, THEN navigate. Relying on Set-Cookie surviving a top-level
-      // 307 redirect is flaky in some browsers and causes state mismatch.
-      const res = await fetch("/api/auth/spotify/login", { method: "GET" });
-      const spotifyUrl = res.headers.get("location") ?? res.url;
-      window.location.href = spotifyUrl;
-    } catch {
-      setConnecting(false);
-      window.location.href = "/api/auth/spotify/login";
-    }
+    window.location.href = "/api/auth/spotify/login";
   }, [connecting]);
 
   return (
@@ -78,9 +68,11 @@ function App() {
     const err = params.get("error");
     if (err) {
       const map: Record<string, string> = {
+        spotify_missing_client_id:
+          "Spotify Client ID is not configured. Please set SPOTIFY_CLIENT_ID in your Vercel Environment Variables.",
         spotify_state:
-          "Spotify state mismatch. This usually means the host you're browsing (e.g. the 192.168.x.x network URL) differs from the Redirect URI registered in Spotify. Browse http://localhost:3000 and retry.",
-        spotify_token: "Spotify token exchange failed — check your client secret.",
+          "Spotify state mismatch. Browse via your main app domain (https://harmonix.vercel.app) and retry.",
+        spotify_token: "Spotify token exchange failed — check your SPOTIFY_CLIENT_SECRET in Vercel.",
         spotify_denied: "Spotify authorization was denied.",
       };
       if (map[err]) return map[err];
@@ -100,12 +92,15 @@ function App() {
   }, []);
 
   const runSearch = useCallback(async (q: string) => {
-    if (!q.trim()) return;
+    if (!q.trim()) {
+      setCommitted("");
+      setSpotifyTracks([]);
+      setYoutubeTracks([]);
+      return;
+    }
     setCommitted(q);
     setLoading(true);
     setNote(null);
-    setSpotifyTracks([]);
-    setYoutubeTracks([]);
 
     const doSpotify = filter === "all" || filter === "spotify";
     const doYouTube = filter === "all" || filter === "youtube";
@@ -138,6 +133,15 @@ function App() {
     setLoading(false);
   }, [filter]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (query.trim()) {
+        runSearch(query);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query, runSearch]);
+
   const allTracks = useMemo(
     () => [...spotifyTracks, ...youtubeTracks],
     [spotifyTracks, youtubeTracks],
@@ -162,10 +166,7 @@ function App() {
         )}
         <SearchBar
           query={query}
-          onQueryChange={(q) => {
-            setQuery(q);
-            runSearch(q);
-          }}
+          onQueryChange={(q) => setQuery(q)}
           filter={filter}
           onFilterChange={setFilter}
           loading={loading}

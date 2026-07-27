@@ -31,19 +31,56 @@ export function spotifyCallbackPath(): string {
 export function redirectUriFrom(req: Request): string {
   const configured = process.env.SPOTIFY_REDIRECT_URI?.trim();
   if (configured) return configured;
+
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    (host && !host.includes("localhost") ? "https" : "http");
+
+  if (host) {
+    return `${proto}://${host}${spotifyCallbackPath()}`;
+  }
+
   try {
     const origin = new URL(req.url).origin;
     if (origin && origin !== "null") return origin + spotifyCallbackPath();
   } catch {}
+
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}${spotifyCallbackPath()}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}${spotifyCallbackPath()}`;
+  }
+
   return `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}${spotifyCallbackPath()}`;
 }
 
 /** Where to send the user after OAuth completes (the app root). */
 export function appBaseUrl(req: Request): string {
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto =
+    req.headers.get("x-forwarded-proto") ||
+    (host && !host.includes("localhost") ? "https" : "http");
+
+  if (host) {
+    return `${proto}://${host}`;
+  }
+
   try {
     const origin = new URL(req.url).origin;
     if (origin && origin !== "null") return origin;
   } catch {}
+
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 

@@ -16,6 +16,7 @@ interface SpotifyPlayerState {
   duration?: number;
   paused?: boolean;
   track_window?: { current_track?: { uri?: string } };
+  device_id?: string;
 }
 interface SpotifyPlayerInstance {
   connect: () => Promise<boolean>;
@@ -23,7 +24,7 @@ interface SpotifyPlayerInstance {
   resume: () => Promise<void>;
   play: (opts: { uris: string[]; position?: number }) => Promise<void>;
   seek: (ms: number) => Promise<void>;
-  on: (event: string, cb: (state?: SpotifyPlayerState) => void) => void;
+  on: (event: string, cb: (data?: any) => void) => void;
 }
 interface SpotifyPlayerConstructor {
   new (opts: {
@@ -112,6 +113,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const spotifyRef = useRef<SpotifyPlayerInstance | null>(null);
+  const deviceIdRef = useRef<string | null>(null);
   const ytRef = useRef<YTPlayerInstance | null>(null);
   const ytDivRef = useRef<HTMLDivElement | null>(null);
   const queueRef = useRef<UnifiedTrack[]>([]);
@@ -153,16 +155,39 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       if (track.source === "spotify") {
         pauseOther("spotify");
-        if (!spotifyRef.current) {
-          setError("Spotify player not ready.");
+        if (!spotifyRef.current || !deviceIdRef.current) {
+          setError("Spotify player not ready — ensure Spotify Premium account is logged in.");
           setStatus("idle");
           return;
         }
         try {
-          await spotifyRef.current.play({ uris: [track.spotifyUri ?? ""] });
-          setStatus("playing");
+          const res = await fetch("/api/auth/spotify/token");
+          if (!res.ok) throw new Error("No token");
+          const { access_token } = await res.json();
+
+          const playRes = await fetch(
+            `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${access_token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ uris: [track.spotifyUri ?? ""] }),
+            },
+          );
+
+          if (playRes.status === 403) {
+            setError("Spotify Premium is required for Web Playback.");
+            setStatus("idle");
+          } else if (!playRes.ok && playRes.status !== 204) {
+            setError(`Spotify play error (${playRes.status}).`);
+            setStatus("idle");
+          } else {
+            setStatus("playing");
+          }
         } catch {
-          setError("Failed to play on Spotify (Premium required).");
+          setError("Failed to play on Spotify.");
           setStatus("idle");
         }
       } else if (track.source === "youtube") {
@@ -317,7 +342,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         },
         volume: 0.8,
       });
-      player.on("ready", () => setSpotifyReady(true));
+      player.on("ready", (data?: { device_id?: string }) => {
+        if (data?.device_id) deviceIdRef.current = data.device_id;
+        setSpotifyReady(true);
+      });
       player.on("not_ready", () => setSpotifyReady(false));
       player.on("initialization_error", () => setError("Spotify init error"));
       player.on("authentication_error", () =>
