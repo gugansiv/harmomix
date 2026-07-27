@@ -24,9 +24,10 @@ export function spotifyCallbackPath(): string {
 }
 
 /** Build the exact redirect URI.
- * Prefer an explicit SPOTIFY_REDIRECT_URI (authoritative — set it to exactly
- * what's registered in the Spotify dashboard). Fall back to the live request
- * host so localhost works with zero config. */
+ * Default: derive from the live request host so the cookie set during `login`
+ * and the callback host always match (avoids state mismatch when browsing via
+ * a network IP). Override with SPOTIFY_REDIRECT_URI when you need a fixed value
+ * (then you must browse that exact host and register it in the Spotify dashboard). */
 export function redirectUriFrom(req: Request): string {
   const configured = process.env.SPOTIFY_REDIRECT_URI?.trim();
   if (configured) return configured;

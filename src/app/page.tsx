@@ -55,7 +55,19 @@ function App() {
   const [note, setNote] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("error")) return "Spotify connection failed. Please try again.";
+    const err = params.get("error");
+    if (err) {
+      const map: Record<string, string> = {
+        spotify_state:
+          "Spotify state mismatch. This usually means the host you're browsing (e.g. the 192.168.x.x network URL) differs from the Redirect URI registered in Spotify. Browse http://localhost:3000 and retry.",
+        spotify_token: "Spotify token exchange failed — check your client secret.",
+        spotify_denied: "Spotify authorization was denied.",
+      };
+      if (map[err]) return map[err];
+      if (err.startsWith("spotify_"))
+        return `Spotify error: ${err.replace("spotify_", "")}`;
+      return "Spotify connection failed. Please try again.";
+    }
     if (params.get("spotify") === "connected") return "Spotify connected ✔";
     return null;
   });
