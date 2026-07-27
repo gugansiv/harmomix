@@ -22,17 +22,15 @@ export default function SearchBar({
   onFilterChange: (f: SourceFilter) => void;
   loading: boolean;
 }) {
-  const [local, setLocal] = useState(query);
-
   return (
     <div className="sticky top-0 z-20 -mx-4 border-b border-white/5 bg-neutral-950/90 px-4 py-3 backdrop-blur">
       <div className="flex items-center gap-2 rounded-full bg-white/5 px-4">
         <span className="text-neutral-500">🔍</span>
         <input
-          value={local}
-          onChange={(e) => setLocal(e.target.value)}
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onQueryChange(local);
+            if (e.key === "Enter") onQueryChange(query);
           }}
           placeholder="Search songs, artists, videos…"
           className="h-11 flex-1 bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
@@ -41,7 +39,7 @@ export default function SearchBar({
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-600 border-t-emerald-500" />
         )}
         <button
-          onClick={() => onQueryChange(local)}
+          onClick={() => onQueryChange(query)}
           className="rounded-full bg-emerald-500 px-4 py-1.5 text-sm font-medium text-black transition hover:bg-emerald-400"
         >
           Search
