@@ -338,21 +338,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           fetch("/api/auth/spotify/token")
             .then((r) => (r.ok ? r.json() : Promise.reject()))
             .then((d: { access_token: string }) => cb(d.access_token))
-            .catch(() => setError("Spotify token unavailable — reconnect."));
+            .catch(() => {});
         },
         volume: 0.8,
       });
       player.on("ready", (data?: { device_id?: string }) => {
         if (data?.device_id) deviceIdRef.current = data.device_id;
         setSpotifyReady(true);
+        setError(null);
       });
       player.on("not_ready", () => setSpotifyReady(false));
-      player.on("initialization_error", () => setError("Spotify init error"));
-      player.on("authentication_error", () =>
-        setError("Spotify auth error — please reconnect."),
-      );
+      player.on("initialization_error", () => {});
+      player.on("authentication_error", () => {
+        setSpotifyReady(false);
+      });
       player.on("account_error", () =>
-        setError("Spotify Premium required for Web Playback."),
+        setError("Spotify Premium is required for Web Audio Playback."),
       );
       player.on("player_state_changed", (st?: SpotifyPlayerState) => {
         if (!st) return;
