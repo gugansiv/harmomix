@@ -80,6 +80,7 @@ declare global {
 }
 
 type Status = "idle" | "loading" | "playing" | "paused";
+export type RepeatMode = "off" | "all" | "one";
 
 interface PlayerState {
   queue: UnifiedTrack[];
@@ -104,9 +105,24 @@ interface PlayerState {
   muted: boolean;
   setVolume: (v: number) => void;
   toggleMute: () => void;
+  shuffle: boolean;
+  repeatMode: RepeatMode;
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
 }
 
 const Ctx = createContext<PlayerState | null>(null);
+
+// Fisher-Yates shuffle that keeps the track at `keepIndex` first.
+function shuffled(tracks: UnifiedTrack[], keepIndex: number): UnifiedTrack[] {
+  const current = keepIndex >= 0 ? tracks[keepIndex] : undefined;
+  const rest = tracks.filter((_, idx) => idx !== keepIndex);
+  for (let k = rest.length - 1; k > 0; k--) {
+    const j = Math.floor(Math.random() * (k + 1));
+    [rest[k], rest[j]] = [rest[j], rest[k]];
+  }
+  return current ? [current, ...rest] : rest;
+}
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<UnifiedTrack[]>([]);
@@ -119,6 +135,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [volume, setVolumeState] = useState(0.8);
   const [muted, setMuted] = useState(false);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
 
   const spotifyRef = useRef<SpotifyPlayerInstance | null>(null);
   const ytRef = useRef<YTPlayerInstance | null>(null);
@@ -128,6 +146,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const trackRef = useRef<UnifiedTrack | null>(null);
   const volumeRef = useRef(0.8);
   const lastVolumeRef = useRef(0.8);
+  // shuffle keeps the pre-shuffle order here so we can restore it on toggle-off
+  const originalQueueRef = useRef<UnifiedTrack[] | null>(null);
+  const repeatModeRef = useRef<RepeatMode>("off");
 
   // keep refs in sync for use inside async SDK callbacks / intervals
   useEffect(() => {
@@ -136,6 +157,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     trackRef.current = currentTrack;
     volumeRef.current = volume;
   }, [queue, currentIndex, currentTrack, volume]);
+
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+  }, [repeatMode]);
 
   const pauseSpotify = useCallback(() => {
     spotifyRef.current?.pause().catch(() => {});
@@ -196,6 +221,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playTrack = useCallback(
     (track: UnifiedTrack) => {
+      originalQueueRef.current = null;
       setQueue([track]);
       setCurrentIndex(0);
       startTrack(track);
@@ -206,34 +232,61 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const playMany = useCallback(
     (tracks: UnifiedTrack[], startIndex = 0) => {
       if (tracks.length === 0) return;
-      setQueue(tracks);
-      setCurrentIndex(startIndex);
-      startTrack(tracks[startIndex]);
+      if (shuffle && tracks.length > 1) {
+        originalQueueRef.current = tracks;
+        const q = shuffled(tracks, startIndex);
+        setQueue(q);
+        setCurrentIndex(0);
+        startTrack(q[0]);
+      } else {
+        originalQueueRef.current = null;
+        setQueue(tracks);
+        setCurrentIndex(startIndex);
+        startTrack(tracks[startIndex]);
+      }
     },
-    [startTrack],
+    [startTrack, shuffle],
   );
 
   const addToQueue = useCallback((track: UnifiedTrack) => {
+    if (originalQueueRef.current)
+      originalQueueRef.current = [...originalQueueRef.current, track];
     setQueue((q) => [...q, track]);
   }, []);
 
   const addManyToQueue = useCallback((tracks: UnifiedTrack[]) => {
+    if (originalQueueRef.current)
+      originalQueueRef.current = [...originalQueueRef.current, ...tracks];
     setQueue((q) => [...q, ...tracks]);
   }, []);
 
-  const nextInternal = useCallback(() => {
-    const q = queueRef.current;
-    const i = indexRef.current;
-    if (i < q.length - 1) {
-      const ni = i + 1;
-      setCurrentIndex(ni);
-      startTrack(q[ni]);
-    } else {
-      setStatus("paused");
-    }
-  }, [startTrack]);
+  // `auto` = true when the track finished on its own (not a manual skip).
+  // repeat-one only replays on natural end; a manual Next always advances.
+  const nextInternal = useCallback(
+    (auto = false) => {
+      const q = queueRef.current;
+      const i = indexRef.current;
+      const mode = repeatModeRef.current;
+      if (auto && mode === "one") {
+        const t = q[i] ?? trackRef.current;
+        if (t) startTrack(t);
+        return;
+      }
+      if (i < q.length - 1) {
+        const ni = i + 1;
+        setCurrentIndex(ni);
+        startTrack(q[ni]);
+      } else if (mode === "all" && q.length > 0) {
+        setCurrentIndex(0);
+        startTrack(q[0]);
+      } else {
+        setStatus("paused");
+      }
+    },
+    [startTrack],
+  );
 
-  const next = useCallback(() => nextInternal(), [nextInternal]);
+  const next = useCallback(() => nextInternal(false), [nextInternal]);
 
   const prev = useCallback(() => {
     const q = queueRef.current;
@@ -352,6 +405,37 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   }, [applyVolume]);
 
+  // ---- shuffle & repeat ----
+  const toggleShuffle = useCallback(() => {
+    const nextOn = !shuffle;
+    const q = queueRef.current;
+    const i = indexRef.current;
+    if (nextOn) {
+      if (q.length > 1) {
+        originalQueueRef.current = q;
+        const newQ = shuffled(q, i);
+        setQueue(newQ);
+        setCurrentIndex(i >= 0 ? 0 : -1);
+      }
+    } else {
+      const original = originalQueueRef.current;
+      originalQueueRef.current = null;
+      if (original && original.length > 0) {
+        const curId = trackRef.current?.id;
+        const restoredIdx = curId
+          ? original.findIndex((t) => t.id === curId)
+          : -1;
+        setQueue(original);
+        setCurrentIndex(restoredIdx >= 0 ? restoredIdx : 0);
+      }
+    }
+    setShuffle(nextOn);
+  }, [shuffle]);
+
+  const cycleRepeat = useCallback(() => {
+    setRepeatMode((m) => (m === "off" ? "all" : m === "all" ? "one" : "off"));
+  }, []);
+
   // ---- initialise the two SDK players ----
   const initSpotify = useCallback(() => {
     if (!window.Spotify) return;
@@ -424,7 +508,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             e.data === YT.PlayerState.BUFFERING
           )
             setStatus("paused");
-          else if (e.data === YT.PlayerState.ENDED) nextInternal();
+          else if (e.data === YT.PlayerState.ENDED) nextInternal(true);
         },
       },
     });
@@ -505,6 +589,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     muted,
     setVolume,
     toggleMute,
+    shuffle,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeat,
   };
 
   return (

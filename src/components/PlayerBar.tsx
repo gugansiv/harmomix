@@ -5,6 +5,7 @@ import { usePlayer } from "@/lib/player-context";
 import { formatDuration } from "@/lib/format";
 import QueuePanel from "./QueuePanel";
 import DeviceMenu from "./DeviceMenu";
+import NowPlayingView from "./NowPlayingView";
 
 export default function PlayerBar() {
   const {
@@ -23,11 +24,17 @@ export default function PlayerBar() {
     setVolume,
     toggleMute,
     clearQueue,
+    shuffle,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeat,
   } = usePlayer();
 
   const [showQueue, setShowQueue] = useState(false);
   const [showDevices, setShowDevices] = useState(false);
+  const [showNowPlaying, setShowNowPlaying] = useState(false);
   const [volumeHover, setVolumeHover] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const volumeRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLInputElement>(null);
 
@@ -108,14 +115,19 @@ export default function PlayerBar() {
 
       {showDevices && <DeviceMenu onClose={() => setShowDevices(false)} />}
 
+      {showNowPlaying && <NowPlayingView onClose={() => setShowNowPlaying(false)} />}
+
       {/* Main Player Bar */}
       <footer className="fixed inset-x-0 bottom-0 z-30 h-[90px] bg-black/90 backdrop-blur-xl border-t border-border">
         <div className="mx-auto flex max-w-7xl h-full items-center gap-4 px-4">
           {/* Left: Track Info */}
           <div className="flex w-[25%] shrink-0 items-center gap-3 min-w-0">
             <button
+              onClick={() => setShowNowPlaying(true)}
               className="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-hover transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
               aria-label="Open Now Playing"
+              aria-expanded={showNowPlaying}
+              title="Open Now Playing"
             >
               {currentTrack.artworkUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -149,14 +161,18 @@ export default function PlayerBar() {
           <div className="flex flex-1 flex-col items-center gap-1.5 min-w-0">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => {}}
-                className="p-1.5 rounded-lg text-subtext hover:text-foreground hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
+                onClick={toggleShuffle}
+                className={`relative p-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black ${shuffle ? "text-accent bg-hover" : "text-subtext hover:text-foreground hover:bg-hover"}`}
                 aria-label="Shuffle"
-                title="Shuffle"
+                aria-pressed={shuffle}
+                title={shuffle ? "Shuffle: on" : "Shuffle: off"}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 4v6m-4 4h12m-6 4v6m4-4h-12" />
                 </svg>
+                {shuffle && (
+                  <span className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent" aria-hidden="true" />
+                )}
               </button>
 
               <button
@@ -203,13 +219,23 @@ export default function PlayerBar() {
               </button>
 
               <button
-                className="p-1.5 rounded-lg text-subtext hover:text-foreground hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
-                aria-label="Repeat"
-                title="Repeat"
+                onClick={cycleRepeat}
+                className={`relative p-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black ${repeatMode !== "off" ? "text-accent bg-hover" : "text-subtext hover:text-foreground hover:bg-hover"}`}
+                aria-label={repeatMode === "off" ? "Repeat: off" : repeatMode === "all" ? "Repeat: all" : "Repeat: one"}
+                aria-pressed={repeatMode !== "off"}
+                title={repeatMode === "off" ? "Repeat: off" : repeatMode === "all" ? "Repeat: all" : "Repeat: one"}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
+                {repeatMode === "one" && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-black">
+                    1
+                  </span>
+                )}
+                {repeatMode !== "off" && (
+                  <span className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent" aria-hidden="true" />
+                )}
               </button>
             </div>
 
@@ -227,8 +253,9 @@ export default function PlayerBar() {
                   max={Math.max(durationMs, 1)}
                   value={Math.min(positionMs, durationMs)}
                   onChange={(e) => seek(Number(e.target.value))}
-                  onMouseDown={() => progressRef.current?.classList.add("dragging")}
-                  onMouseUp={() => progressRef.current?.classList.remove("dragging")}
+                  onMouseDown={() => setDragging(true)}
+                  onMouseUp={() => setDragging(false)}
+                  onMouseLeave={() => setDragging(false)}
                   aria-label="Playback progress"
                 />
                 <div
@@ -241,7 +268,7 @@ export default function PlayerBar() {
                   aria-label="Playback progress"
                 />
                 <div
-                  className={`absolute top-1/2 w-3 h-3 rounded-full bg-accent transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out ${progressRef.current?.classList.contains("dragging") ? "scale-150" : "opacity-0 hover:opacity-100 focus-within:opacity-100"}`}
+                  className={`absolute top-1/2 w-3 h-3 rounded-full bg-accent transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out ${dragging ? "scale-150" : "opacity-0 hover:opacity-100 focus-within:opacity-100"}`}
                   style={{ left: `${progress}%` }}
                   aria-hidden="true"
                 />

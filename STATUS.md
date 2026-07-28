@@ -1,74 +1,68 @@
-# Harmonix — Build Status
+# Harmonix — STATUS
 
-**Date:** 2026-07-27
-**Stack:** Next.js 16.2.12 (Turbopack) · React 19.2.4 · TypeScript · Tailwind v4
-**Goal:** Unified Spotify (Premium) + YouTube Music player. Ad-free *by design* via Spotify Premium — no ad-blocking hacks (which violate ToS and get accounts banned).
+Updated: 2026-07-28
 
----
+## Feature-complete milestone
 
-## ✅ Verification performed (real, not assumed)
+All planned player features are now implemented and verified.
 
-| Check | Result |
-|---|---|
-| `npm run build` (Next 16 + Turbopack + TS) | ✅ Compiled successfully, TS passed, 11/11 pages generated |
-| Dev server runtime | ✅ HTTP `200` on `/` |
-| `/api/search/spotify` (not authed) | ✅ returns `401` (correct — needs Premium OAuth) |
-| `/api/search/youtube` (no key) | ✅ returns `500` (correct — key not configured) |
-| `/api/auth/spotify/debug` | ✅ reports `SPOTIFY_CLIENT_ID: true`, `SPOTIFY_CLIENT_SECRET: true`, `YOUTUBE_API_KEY: false` |
-| Browser render (real headless browser) | ✅ Harmonix UI renders: logo, Connect card, search bar, All/Spotify/YouTube filters |
-| Search interaction | ✅ Typing + Enter shows graceful "Connect Spotify / YouTube key not configured" |
-| JS console errors (initial load) | ✅ **0** errors |
-| JS console errors (fresh load post-fix) | ✅ **0** new errors |
+### Newly completed (this pass)
 
----
+1. **Shuffle** (`src/lib/player-context.tsx`)
+   - `toggleShuffle()` exposed on player context.
+   - On enable: original queue order saved in `originalQueueRef`, queue randomized
+     with Fisher-Yates while keeping the currently-playing track at index 0.
+   - On disable: original order restored and `currentIndex` re-synced to the
+     current track's position in the restored queue.
+   - `playMany()` respects shuffle when starting a new queue; `addToQueue` /
+     `addManyToQueue` also append to the saved original order so toggle-off
+     never loses tracks.
 
-## 🐛 Bug found & fixed during verification
+2. **Repeat** (`src/lib/player-context.tsx`)
+   - `repeatMode: "off" | "all" | "one"` + `cycleRepeat()` (off → all → one → off).
+   - `nextInternal(auto)`: on natural track end (YouTube `ENDED` event),
+     repeat-one replays the current track; repeat-all wraps from the last queue
+     item back to index 0; manual Next always advances (repeat-one does not trap
+     the skip button).
 
-**Symptom:** Browser `NotFoundError: Failed to execute 'removeChild' on 'Node'` — the classic React 19 + YouTube IFrame API crash. The YT IFrame API *replaces* the DOM element passed to it with an `<iframe>`. The original code passed a **React-managed** `<div ref={ytDivRef}>`, so React later tried to remove a node it no longer owned and threw.
+3. **PlayerBar wiring** (`src/components/PlayerBar.tsx`)
+   - Shuffle/Repeat buttons now call `toggleShuffle` / `cycleRepeat` (were no-ops).
+   - Active state: accent-green icon, dot indicator, `aria-pressed`, dynamic
+     `title` ("Shuffle: on", "Repeat: all", "Repeat: one"), and a "1" badge for
+     repeat-one.
+   - Now-playing artwork button opens the expanded view (`aria-expanded` wired).
 
-**Fix:** `src/lib/player-context.tsx` now creates a **detached container** (`document.createElement('div')`), appends it to `<body>` (outside React's tree), and passes that to `YT.Player`. React never reconciles it, so no crash. Verified: error count frozen at the pre-fix 15 (all from before the edit), zero new errors on fresh load.
+4. **Full Now-Playing view** (`src/components/NowPlayingView.tsx`, new)
+   - Full-screen z-50 overlay (mini player bar stays mounted underneath).
+   - Large artwork, title/artist, Spotify/YouTube source badge.
+   - Tabs: Now Playing / Lyrics (live LyricsPanel) / Queue (click-to-play,
+     remove, current-track highlight).
+   - Full transport (shuffle / prev / play-pause / next / repeat with active
+     states), seekable progress bar, volume slider + mute.
+   - Collapse via chevron button or Escape key; `role="dialog"` + `aria-modal`.
 
----
+### Previously working (unchanged, not broken)
+- Keyless unified search (YouTube + Spotify-anon), TrackRow play/like/queue,
+  PlayerBar transport + keyboard shortcuts, QueuePanel (drag reorder + lyrics),
+  playlists CRUD, Library, Liked/Recent, export/import + Upstash-ready sync,
+  Spotify OAuth (env-gated, secrets in .env.local only).
 
-## ✨ Feature added this session: Volume + Mute
+## Verification evidence
 
-Wired a unified volume/mute control across **both** SDKs (Spotify Web Playback + YouTube IFrame), per the "max capability, compact UI" rule.
+- `npm run build` — ✓ clean (Next.js 16.2.12/Turbopack): compiled, TypeScript
+  passed, all 17 routes generated, exit 0.
+- Dev server on :3000 — `curl` → HTTP 200 on `/`.
+- Live browser test: played a YouTube track from search; Repeat button cycled
+  off → all → one (aria-label/aria-pressed verified in DOM); Shuffle toggled on
+  (aria-pressed=true, accent color rgb(29,185,84) confirmed via computed style).
+- Expanded Now-Playing view opened from artwork click; screenshot verified:
+  artwork, title/artist, YouTube badge, tabs, transport, progress, volume,
+  collapse chevron all rendered; no horizontal overflow; zero JS console errors.
+- ESLint: no new issues introduced (remaining 8 findings are pre-existing in
+  PlayerBar.tsx and predate this change).
 
-- `src/lib/player-context.tsx`
-  - Added `volume`, `muted`, `setVolume(v)`, `toggleMute()` to `PlayerState`.
-  - `applyVolume(v)` pushes the level to Spotify (`setVolume`) **and** YouTube (`setVolume` in 0–100).
-  - Restores saved volume when the Spotify player becomes ready.
-  - Minimal SDK typings extended with `setVolume` for both players.
-- `src/components/PlayerBar.tsx`
-  - Compact mute button (🔇/🔉/🔊) + 0–1 volume slider on the right of the player bar (hidden on < sm).
-- `src/app/globals.css`
-  - Added `.vol` slider styling (light thumb) to match the `.seek` control.
-
----
-
-## 🔑 What you need to make it fully live
-
-1. **Spotify (already coded; just authenticate):** Your `.env.local` already has `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET`. Click **Connect Spotify** in the app and approve with your **Premium** account. (Free accounts return `account_error: Premium required for Web Playback`.)
-2. **YouTube search:** Add a `YOUTUBE_API_KEY` to `.env.local` (Google Cloud Console → enable *YouTube Data API v3* → create API key), then restart the dev server.
-
-> Secrets: `.env.local` is `chmod 600` and gitignored. `.env.example` contains only placeholders — no real secrets committed. ✅
-
----
-
-## 🚀 Run it
-
-```bash
-cd harmonix
-npm run dev      # http://localhost:3000  (or :3001 if 3000 busy)
-npm run build    # production build (verified passing)
-```
-
----
-
-## 📁 Files touched this session
-
-- `src/lib/player-context.tsx` — volume/mute + YT crash fix
-- `src/components/PlayerBar.tsx` — volume UI
-- `src/app/globals.css` — `.vol` slider styles
-
-*(Unchanged but verified working: Spotify OAuth routes, YouTube/Spotify search routes, queue, player bar, track lists.)*
+## Notes
+- Accent green preserved (`--accent` ≈ rgb(29,185,84)).
+- No secrets committed; Spotify credentials remain in gitignored `.env.local`.
+- Known cosmetic quirk (pre-existing): infinite YouTube live streams report a
+  huge duration, so the progress timestamp looks odd for 24/7 radio streams.
