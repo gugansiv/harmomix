@@ -190,6 +190,7 @@ export default function TrackRow({
                 `}
                 aria-label={isLiked ? "Remove from Liked" : "Add to Liked"}
                 aria-pressed={isLiked}
+                title={isLiked ? "Remove from Liked" : "Save to Liked"}
               >
                 <svg className="w-5 h-5" fill={isLiked ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -200,6 +201,7 @@ export default function TrackRow({
               onClick={handleAddClick}
               className="p-1.5 rounded-full text-subtext hover:text-foreground hover:bg-hover transition-colors"
               aria-label="Add to queue"
+              title="Add to queue"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

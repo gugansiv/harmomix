@@ -106,7 +106,13 @@ function PlaylistDetail() {
       </div>
 
       {playlist.tracks.length === 0 ? (
-        <p className="text-subtext">No tracks yet. Search and use the + button to add them.</p>
+        <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+          <p className="text-base font-semibold">This playlist is empty</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-subtext">
+            Search for a song above, then tap the <span className="font-medium text-foreground">＋</span>{" "}
+            button on any track and choose <span className="font-medium text-foreground">{playlist.name}</span> — or use <span className="font-medium text-foreground">Save to Liked</span> ♥ to build your library.
+          </p>
+        </div>
       ) : (
         <div className="space-y-0.5">
           {playlist.tracks.map((track, index) => (

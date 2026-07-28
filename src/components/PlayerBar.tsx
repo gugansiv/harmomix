@@ -72,8 +72,20 @@ export default function PlayerBar() {
 
   if (!currentTrack) {
     return (
-      <footer className="fixed inset-x-0 bottom-0 z-30 h-[90px] bg-black/90 backdrop-blur-xl border-t border-border flex items-center justify-center px-4 text-subtext">
-        Nothing playing — search for a track and hit play.
+      <footer className="fixed inset-x-0 bottom-0 z-30 flex h-[90px] items-center justify-center gap-3 border-t border-border bg-black/90 px-4 text-sm backdrop-blur-xl">
+        <span className="text-subtext">
+          Nothing playing — search for a track and hit play.
+        </span>
+        <span className="hidden text-subtext/60 sm:inline">·</span>
+        <button
+          onClick={() => {
+            const el = document.querySelector<HTMLInputElement>('input[placeholder^="Search"]');
+            el?.focus();
+          }}
+          className="hidden rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-accent/40 hover:bg-hover sm:inline"
+        >
+          Browse music
+        </button>
       </footer>
     );
   }
@@ -140,6 +152,7 @@ export default function PlayerBar() {
                 onClick={() => {}}
                 className="p-1.5 rounded-lg text-subtext hover:text-foreground hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
                 aria-label="Shuffle"
+                title="Shuffle"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 4v6m-4 4h12m-6 4v6m4-4h-12" />
@@ -150,6 +163,7 @@ export default function PlayerBar() {
                 onClick={prev}
                 className="p-1.5 rounded-lg text-foreground hover:text-accent hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
                 aria-label="Previous"
+                title="Previous track"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 6h2v12H6zm3.5-6l8.5 6-8.5 6V6z" />
@@ -161,6 +175,7 @@ export default function PlayerBar() {
                 className="relative p-0 w-12 h-12 rounded-full bg-accent text-black flex items-center justify-center transition-all duration-200 hover:scale-105 hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black active:scale-95"
                 aria-label={playing ? "Pause" : "Play"}
                 aria-pressed={playing}
+                title={playing ? "Pause" : "Play"}
               >
                 {playing ? (
                   <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -180,6 +195,7 @@ export default function PlayerBar() {
                 onClick={next}
                 className="p-1.5 rounded-lg text-foreground hover:text-accent hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
                 aria-label="Next"
+                title="Next track"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -189,6 +205,7 @@ export default function PlayerBar() {
               <button
                 className="p-1.5 rounded-lg text-subtext hover:text-foreground hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
                 aria-label="Repeat"
+                title="Repeat"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -242,6 +259,7 @@ export default function PlayerBar() {
               className={`p-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black ${showDevices ? "text-accent bg-hover" : "text-subtext hover:text-foreground hover:bg-hover"}`}
               aria-label="Connect device"
               aria-expanded={showDevices}
+              title="Connect a device (Spotify)"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -253,6 +271,7 @@ export default function PlayerBar() {
               className={`p-1.5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black ${showQueue ? "text-accent bg-hover" : "text-subtext hover:text-foreground hover:bg-hover"}`}
               aria-label="Queue and lyrics"
               aria-expanded={showQueue}
+              title="Queue & lyrics"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -264,6 +283,7 @@ export default function PlayerBar() {
                 onClick={toggleMute}
                 className="p-1.5 rounded-lg text-subtext hover:text-foreground hover:bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-black"
                 aria-label={muted ? "Unmute" : "Mute"}
+                title={muted ? "Unmute" : "Mute"}
               >
                 {muted || volume === 0 ? (
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3z" /></svg>

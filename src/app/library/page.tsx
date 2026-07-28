@@ -103,7 +103,12 @@ function LibraryPage() {
       </div>
 
       {playlists.length === 0 ? (
-        <p className="text-subtext">No playlists yet. Create one above.</p>
+        <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+          <p className="text-base font-semibold">No playlists yet</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-subtext">
+            Give your playlist a name above and hit <span className="font-medium text-foreground">Create</span>. You can add songs anytime by tapping ＋ on a track.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {playlists.map((pl) => (
